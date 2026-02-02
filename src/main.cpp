@@ -59,7 +59,18 @@ public:
                    }));
         ex::sync_wait(std::move(initialize));
 
-        auto process_frame = ex::just(); // Ваш код здесь
+        auto process_frame =
+            ex::on(sfml_sched, SfmlEventHandler{state_->window, state_->render_settings, state_->app_state}) |
+            ex::let_value([&](auto) {
+                if (!state_->app_state.need_rerender) {
+                    return ex::just();
+                }
+                return mandelbrot::MakeComputeSender(state_->render_settings, state_->app_state.viewport) |
+                       render::MakeSfmlDisplaySender(*state_) | ex::then([this] {
+                           WaitForFPS wait(state_->frame_clock, static_cast<unsigned>(WaitForFPS::TARGET_FPS));
+                           wait();
+                       });
+            });
 
         auto repeated_pipeline = std::move(process_frame) | ex::then([this] { return state_->app_state.should_exit; }) |
                                  exec::repeat_effect_until();
