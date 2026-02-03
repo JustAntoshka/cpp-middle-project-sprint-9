@@ -14,6 +14,7 @@
 #include "mandelbrot_sender.hpp"
 #include "sfml_display_sender.hpp"
 #include "sfml_events_handler.hpp"
+#include "types_core.hpp"
 #include "types_sfml.hpp"
 
 using namespace std::chrono_literals;
@@ -48,6 +49,7 @@ public:
     }
 
     void Run() {
+        FrameClock frame_clock;
         auto compute_sched = compute_pool_.get_scheduler();
         auto sfml_sched = sfml_thread_.get_scheduler();
 
@@ -59,7 +61,20 @@ public:
                    }));
         ex::sync_wait(std::move(initialize));
 
-        auto process_frame = ex::just(); // Ваш код здесь
+        auto process_frame =
+            ex::just(SfmlEventHandler{state_->window, state_->render_settings, state_->app_state}) |
+            ex::let_value([this, &frame_clock](auto) {
+                return ex::just() | ex::then([this, &frame_clock]() {
+                           if (!state_->app_state.need_rerender) {
+                               return;
+                           }
+                           ex::sync_wait(
+                               mandelbrot::MakeComputeSender(state_->render_settings, state_->app_state.viewport) |
+                               render::MakeSfmlDisplaySender(*state_) |
+                               ex::then([this]() { state_->app_state.need_rerender = false; }) |
+                               ex::then(WaitForFPS{frame_clock, static_cast<unsigned int>(WaitForFPS::TARGET_FPS)}));
+                       });
+            });
 
         auto repeated_pipeline = std::move(process_frame) | ex::then([this] { return state_->app_state.should_exit; }) |
                                  exec::repeat_effect_until();
