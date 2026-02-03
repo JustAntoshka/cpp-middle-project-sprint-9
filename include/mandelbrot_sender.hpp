@@ -3,6 +3,7 @@
 #include "mandelbrot_fractal_utils.hpp"
 #include "types_sfml.hpp"
 
+#include <print>
 #include <stdexec/execution.hpp>
 
 using namespace std::chrono_literals;
